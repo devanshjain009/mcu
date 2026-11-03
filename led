@@ -1,0 +1,326 @@
+ORG 0000H
+    LJMP MAIN
+
+ORG 0030H
+MAIN:
+    MOV P1, #0FFH    ; Initialize Port 1 (turn off segments, active-low)
+    MOV P2, #0FFH    ; Initialize Port 2 (turn off digit selectors, active-low)
+
+DISPLAY_LOOP:
+    ;--- Digit 3 ('2') ---
+    MOV P1, #0A4H    ; Data for '2' (Common Anode)
+    CLR P2.3         ; Enable Digit 3 (Active-Low)
+    SETB P2.3        ; Immediately disable Digit 3
+
+    ;--- Digit 2 ('0') ---
+    MOV P1, #0C0H    ; Data for '0' (Common Anode)
+    CLR P2.2         ; Enable Digit 2 (Active-Low)
+    SETB P2.2        ; Immediately disable Digit 2
+
+    ;--- Digit 1 ('0') ---
+    MOV P1, #0C0H    ; Data for '0' (Common Anode)
+    CLR P2.1         ; Enable Digit 1 (Active-Low)
+    SETB P2.1        ; Immediately disable Digit 1
+
+    ;--- Digit 0 ('3') ---
+    MOV P1, #0B0H    ; Data for '3' (Common Anode)
+    CLR P2.0         ; Enable Digit 0 (Active-Low)
+    SETB P2.0        ; Immediately disable Digit 0
+
+    SJMP DISPLAY_LOOP ; Loop continuously with zero added delay
+
+END
+
+
+
+;-------------------------------------------------------------------------
+; 8x8 LED Matrix - Display 0 to 9 Sequentially (Active-Low)
+; P1 = Row Data (0 = ON), P2 = Column Select (0 = Active)
+;-------------------------------------------------------------------------
+
+ORG 0000H
+    LJMP MAIN
+
+ORG 0030H
+MAIN:
+    MOV R7, #0          ; R7 tracks the current digit (0 to 9)
+
+NEXT_DIGIT:
+    ; Set up the frame counter for visible delay (~1 second)
+    ; 1 scan of 8 columns * 1ms = 8ms per frame. 125 frames = ~1 sec.
+    MOV R6, #125        
+
+FRAME_LOOP:
+    MOV R5, #0          ; R5 tracks the current column index (0 to 7)
+    MOV R4, #0FEH       ; R4 holds the initial column selection pattern (11111110)
+
+SCAN_LOOP:
+    ; 1. Calculate ROM offset for the current digit and column
+    MOV A, R7           ; Load current digit (0-9)
+    MOV B, #8           ; Each digit uses 8 bytes of data
+    MUL AB              ; A = Base offset for digit (R7 * 8)
+    ADD A, R5           ; A = Base offset + Column index
+    
+    ; 2. Fetch Row Data from Look-Up Table
+    MOV DPTR, #FONT_LUT
+    MOVC A, @A+DPTR     ; Get the active-low row pattern
+    
+    ; 3. Output to Matrix
+    MOV P1, A           ; Output row data to P1
+    MOV P2, R4          ; Activate the current column on P2
+    
+    ; 4. Hold column for Persistence of Vision (POV)
+    ACALL DELAY_1MS     
+    
+    ; 5. Turn off column to prevent ghosting
+    MOV P2, #0FFH       
+    
+    ; 6. Prepare next column
+    MOV A, R4           
+    RL A                ; Rotate column selection bit left (e.g., FE -> FD -> FB)
+    MOV R4, A           
+    
+    INC R5              ; Increment column index
+    CJNE R5, #8, SCAN_LOOP ; Repeat until all 8 columns are scanned
+
+    ; 7. Check if the visible delay (frame loop) is finished
+    DJNZ R6, FRAME_LOOP 
+
+    ; 8. Move to the next digit
+    INC R7              ; Increment digit counter
+    CJNE R7, #10, NEXT_DIGIT ; If not 10, show the new digit
+    MOV R7, #0          ; If 10, reset back to 0
+    SJMP NEXT_DIGIT     ; Loop continuously
+
+;-------------------------------------------------------------------------
+; 1 Millisecond Delay Subroutine
+;-------------------------------------------------------------------------
+DELAY_1MS:
+    MOV R0, #2
+D1: MOV R1, #248
+D2: DJNZ R1, D2
+    DJNZ R0, D1
+    RET
+
+;-------------------------------------------------------------------------
+; 8x8 Font Look-Up Table (Active-Low Row Data)
+; 8 bytes per digit, representing columns 0 to 7
+;-------------------------------------------------------------------------
+FONT_LUT:
+    ; Digit 0
+    DB 0C1H, 0BEH, 0BEH, 0BEH, 0BEH, 0BEH, 0C1H, 0FFH
+    ; Digit 1
+    DB 0FFH, 0DEH, 080H, 0FEH, 0FEH, 0FFH, 0FFH, 0FFH
+    ; Digit 2
+    DB 0DCH, 0BAH, 0BAH, 0BAH, 0BAH, 0B6H, 0CEH, 0FFH
+    ; Digit 3
+    DB 0DDH, 0BEH, 0BEH, 0BEH, 0BEH, 0BEH, 0C1H, 0FFH
+    ; Digit 4
+    DB 0E7H, 0EBH, 0EDH, 0EEH, 080H, 0EFH, 0EFH, 0FFH
+    ; Digit 5
+    DB 08DH, 0AEH, 0AEH, 0AEH, 0AEH, 0AEH, 0D1H, 0FFH
+    ; Digit 6
+    DB 0C1H, 0B6H, 0B6H, 0B6H, 0B6H, 0B6H, 0D9H, 0FFH
+    ; Digit 7
+    DB 0BFH, 0BFH, 0B8H, 0B7H, 0AFH, 09FH, 0BFH, 0FFH
+    ; Digit 8
+    DB 0C9H, 0B6H, 0B6H, 0B6H, 0B6H, 0B6H, 0C9H, 0FFH
+    ; Digit 9
+    DB 0CDH, 0B6H, 0B6H, 0B6H, 0B6H, 0B6H, 0C1H, 0FFH
+
+END
+
+;-------------------------------------------------------------------------
+; 4-Digit Display Sequence (0000 -> 1111 ... -> 9999) WITHOUT Multiplexing
+; P1 = Segments (Common Anode), P2.0-P2.3 = Digit Selects (Active High)
+;-------------------------------------------------------------------------
+
+ORG 0000H
+    LJMP MAIN
+
+ORG 0030H
+MAIN:
+    ; Fix all four digits to be ON simultaneously
+    MOV P2, #0FH     ; Set P2.0, P2.1, P2.2, P2.3 HIGH (0000 1111 in binary)
+    MOV R7, #0       ; R7 tracks the current number index (0 to 9)
+
+PATTERN_LOOP:
+    ; Fetch the 7-segment hex code for the current number
+    MOV DPTR, #LUT   ; Point DPTR to Look-Up Table
+    MOV A, R7
+    MOVC A, @A+DPTR  ; Fetch the pattern from ROM
+
+    ; Send data to the display
+    MOV P1, A        ; Send pattern to P1. All 4 digits will light up instantly!
+
+    ; Wait for ~1 second so the pattern is clearly visible
+    ACALL DELAY_1SEC 
+
+    ; Move to the next number
+    INC R7           ; Increment index
+    CJNE R7, #10, PATTERN_LOOP ; If index is not 10, go to next pattern
+    MOV R7, #0       ; If index is 10, reset to 0
+    SJMP PATTERN_LOOP ; Loop forever
+
+;-------------------------------------------------------------------------
+; ~1 Second Delay Subroutine (Assumes 11.0592 MHz or 12 MHz crystal)
+;-------------------------------------------------------------------------
+DELAY_1SEC:
+    MOV R2, #10
+DL1:MOV R1, #200
+DL2:MOV R0, #250
+DL3:DJNZ R0, DL3
+    DJNZ R1, DL2
+    DJNZ R2, DL1
+    RET
+
+;-------------------------------------------------------------------------
+; Common-Anode Look-Up Table (LUT) for digits 0-9
+;-------------------------------------------------------------------------
+LUT:
+    DB 0C0H  ; 0
+    DB 0F9H  ; 1
+    DB 0A4H  ; 2
+    DB 0B0H  ; 3
+    DB 099H  ; 4
+    DB 092H  ; 5
+    DB 082H  ; 6
+    DB 0F8H  ; 7
+    DB 080H  ; 8
+    DB 090H  ; 9
+
+END
+
+
+;-------------------------------------------------------------------------
+; 4-Digit Sequence (0000 -> 1111 -> 2222 ... -> 9999) with Visible Delay
+; P1 = Segments (Common Anode), P2 = Digit Selects (Active High)
+;-------------------------------------------------------------------------
+
+ORG 0000H
+    LJMP MAIN
+
+ORG 0030H
+MAIN:
+    MOV P1, #0FFH    ; Turn off all segments
+    MOV P2, #00H     ; Turn off all digits
+    MOV R7, #0       ; R7 = Current number counter (0 to 9)
+
+NEXT_PATTERN:
+    ; 1. Fetch the 7-segment code for the current number
+    MOV DPTR, #LUT   ; Point to Look-Up Table
+    MOV A, R7
+    MOVC A, @A+DPTR  ; Get hex code into Accumulator
+    MOV R5, A        ; Store hex code in R5
+
+    ; 2. Set up the visible delay counter
+    ; Multiplexing 4 digits takes ~8ms. Looping this 125 times = 1 second delay.
+    MOV R6, #125     
+
+MULTIPLEX_CYCLE:
+    ;--- Digit 3 ---
+    MOV P1, R5       ; Output number pattern
+    SETB P2.3        ; Enable Digit 3
+    ACALL DELAY_2MS  ; Wait 2ms for persistence of vision
+    CLR P2.3         ; Disable Digit 3
+
+    ;--- Digit 2 ---
+    MOV P1, R5       
+    SETB P2.2        ; Enable Digit 2
+    ACALL DELAY_2MS  
+    CLR P2.2         
+
+    ;--- Digit 1 ---
+    MOV P1, R5       
+    SETB P2.1        ; Enable Digit 1
+    ACALL DELAY_2MS  
+    CLR P2.1         
+
+    ;--- Digit 0 ---
+    MOV P1, R5       
+    SETB P2.0        ; Enable Digit 0
+    ACALL DELAY_2MS  
+    CLR P2.0         
+
+    ; 3. Check if the 1-second visible delay is over
+    DJNZ R6, MULTIPLEX_CYCLE ; Keep displaying same pattern until R6 is 0
+
+    ; 4. Move to the next pattern
+    INC R7           ; Go to next number (0->1, 1->2, etc.)
+    CJNE R7, #10, NEXT_PATTERN ; If not 10, show the new pattern
+    MOV R7, #0       ; If 10, reset back to 0
+    SJMP NEXT_PATTERN
+
+;-------------------------------------------------------------------------
+; 2 Millisecond Delay (used for POV multiplexing)
+;-------------------------------------------------------------------------
+DELAY_2MS:
+    MOV R0, #10
+D1: MOV R1, #100
+D2: DJNZ R1, D2
+    DJNZ R0, D1
+    RET
+
+;-------------------------------------------------------------------------
+; Look-Up Table for Common Anode 0-9
+;-------------------------------------------------------------------------
+LUT:
+    DB 0C0H, 0F9H, 0A4H, 0B0H, 099H, 092H, 082H, 0F8H, 080H, 090H
+
+END
+
+;---------------------------------------------------------------
+; 4-Digit 7-Segment Multiplexed Display (Common Anode)
+; Year of Birth: 2003
+; Digit 3 (Leftmost)  = '2'
+; Digit 2             = '0'
+; Digit 1             = '0'
+; Digit 0 (Rightmost) = '3'
+;---------------------------------------------------------------
+
+ORG 0000H            ; Reset vector
+    LJMP MAIN
+
+ORG 0030H            ; Main program start
+MAIN:
+    MOV P1, #0FFH    ; Turn off all segments (P1 pins HIGH)
+    MOV P2, #00H     ; Disable all digits (P2 pins LOW)
+
+DISPLAY_LOOP:
+    ;--- Display Digit 3 (Thousands Place: '2') ---
+    MOV P1, #0A4H    ; Load 7-segment pattern for '2'
+    SETB P2.3        ; Turn ON Digit 3
+    LCALL DELAY      ; Hold display briefly
+    CLR P2.3         ; Turn OFF Digit 3 (Ghosting prevention)
+
+    ;--- Display Digit 2 (Hundreds Place: '0') ---
+    MOV P1, #0C0H    ; Load 7-segment pattern for '0'
+    SETB P2.2        ; Turn ON Digit 2
+    LCALL DELAY      ; Hold display briefly
+    CLR P2.2         ; Turn OFF Digit 2
+
+    ;--- Display Digit 1 (Tens Place: '0') ---
+    MOV P1, #0C0H    ; Load 7-segment pattern for '0'
+    SETB P2.1        ; Turn ON Digit 1
+    LCALL DELAY      ; Hold display briefly
+    CLR P2.1         ; Turn OFF Digit 1
+
+    ;--- Display Digit 0 (Ones Place: '3') ---
+    MOV P1, #0B0H    ; Load 7-segment pattern for '3'
+    SETB P2.0        ; Turn ON Digit 0
+    LCALL DELAY      ; Hold display briefly
+    CLR P2.0         ; Turn OFF Digit 0
+
+    SJMP DISPLAY_LOOP ; Repeat multiplexing sequence indefinitely
+
+;---------------------------------------------------------------
+; Delay Subroutine (approx. 2 ms per digit for smooth display)
+;---------------------------------------------------------------
+DELAY:
+    MOV R0, #10
+D1: MOV R1, #100
+D2: DJNZ R1, D2
+    DJNZ R0, D1
+    RET
+
+END

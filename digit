@@ -1,0 +1,140 @@
+ORG 0000H
+MOV DPTR, #MYDATA
+MOV R0, #00H
+LOOP:
+CLR A
+MOVC A, @A+DPTR
+JZ DONE
+
+CJNE A, #'G', NEXT
+INC R0
+NEXT:
+INC DPTR
+SJMP LOOP
+DONE:
+MOV 30H, R0
+HERE:
+SJMP HERE
+
+MYDATA: DB 'P','R','O','G','R','A','M','M','I','N','G','D','A','T','A',0
+END
+
+Q2) Write an 8051 Assembly Language Program to sort the string "MICROCONTROLLER" in
+ascending alphabetical order. Store the string starting from memory location 35H and use
+suitable loops, comparison, and jump instructions to arrange the characters in alphabetical
+order. Store the sorted string back in memory.
+ORG 0000H
+MOV DPTR, #MYSTR
+MOV R0, #35H
+MOV R1, #15
+LOAD_LOOP:
+CLR A
+MOVC A, @A+DPTR
+MOV @R0, A
+INC DPTR
+INC R0
+DJNZ R1, LOAD_LOOP
+MOV R2, #14
+OUTER_LOOP:
+MOV R0, #35H
+MOV A, R2
+MOV R3, A
+
+INNER_LOOP:
+MOV A, @R0
+INC R0
+MOV B, @R0
+DEC R0
+CJNE A, B, COMPARE
+COMPARE:
+JC NO_SWAP
+MOV @R0, B
+INC R0
+MOV @R0, A
+DEC R0
+NO_SWAP:
+INC R0
+DJNZ R3, INNER_LOOP
+DJNZ R2, OUTER_LOOP
+HERE:
+SJMP HERE
+MYSTR: DB 'M','I','C','R','O','C','O','N','T','R','O','L','L','E','R'
+END
+
+Q3) Write an 8051 Assembly Language Program to find the prime factors of the hexadecimal number 60H and store the resulting
+factors sequentially in memory starting from 40H.
+ORG 0000H
+MOV R0, #40H
+MOV A, #60H
+MOV R1, #02H
+FACTOR_LOOP:
+CJNE A, #01H, CONTINUE
+SJMP DONE
+CONTINUE:
+MOV R2, A
+MOV A, R1
+MOV B, A
+MOV A, R2
+DIV AB
+MOV R3, A
+MOV A, B
+JZ IS_FACTOR
+NOT_FACTOR:
+MOV A, R2
+INC R1
+SJMP FACTOR_LOOP
+IS_FACTOR:
+MOV A, R1
+MOV @R0, A
+INC R0
+MOV A, R3
+SJMP FACTOR_LOOP
+DONE:
+HERE:
+
+SJMP HERE
+END
+
+Q4) Write an 8051 Assembly Language Program to find the prime factors of the hexadecimal number 48H and calculate their sum.
+Store the prime factors sequentially in memory starting from 30H, store the final sum at 40H, and store the carry at 41H.
+ORG 0000H
+MOV R0, #30H
+MOV A, #48H
+MOV R1, #02H
+MOV R4, #00H
+MOV R5, #00H
+FACTOR_LOOP:
+CJNE A, #01H, CONTINUE
+SJMP STORE_SUM
+CONTINUE:
+MOV R2, A
+MOV A, R1
+MOV B, A
+MOV A, R2
+DIV AB
+MOV R3, A
+MOV A, B
+JZ IS_FACTOR
+NOT_FACTOR:
+MOV A, R2
+INC R1
+SJMP FACTOR_LOOP
+IS_FACTOR:
+MOV A, R1
+MOV @R0, A
+INC R0
+MOV A, R4
+ADD A, R1
+
+MOV R4, A
+JNC NO_CARRY
+INC R5
+NO_CARRY:
+MOV A, R3
+SJMP FACTOR_LOOP
+STORE_SUM:
+MOV 40H, R4
+MOV 41H, R5
+HERE:
+SJMP HERE
+END
